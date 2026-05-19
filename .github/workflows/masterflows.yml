@@ -22,3 +22,9 @@ jobs:
     spectral: 
         name: run Spectral
         uses: ./.github/workflows/spectral.yml 
+
+    codeql:
+        name: run CodeQL
+        needs: [gitleaks , spectral]
+        uses: ./.github/workflows/codeql.yml 
+
