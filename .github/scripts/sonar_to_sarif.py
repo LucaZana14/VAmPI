@@ -67,12 +67,15 @@ def fetch_issues():
     issues, page, total = [], 1, None
     while total is None or len(issues) < total:
         params = {
-            "componentKeys": project,
+            # LA MAGIA È QUI: Usiamo 'projects' invece di 'componentKeys'
+            "projects": project,
             "organization":  org,
             "ps": 500,
             "p":  page,
-            "resolved": "false"
+            "resolved": "false" 
         }
+        
+        # Ora possiamo passare il branch senza causare l'Errore 403
         if branch and not branch.endswith("/merge"):
             params["branch"] = branch
             
@@ -86,8 +89,6 @@ def fetch_issues():
             break
         page += 1
     return issues
-
-issues = fetch_issues()
 
 # 6. CONVERSIONE IN FORMATO SARIF PER GITHUB
 rules, results = {}, []
