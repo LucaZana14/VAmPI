@@ -67,15 +67,15 @@ def fetch_issues():
     issues, page, total = [], 1, None
     while total is None or len(issues) < total:
         params = {
-            # LA MAGIA È QUI: Usiamo 'projects' invece di 'componentKeys'
-            "projects": project,
+            # TORNIAMO A COMPONENTKEYS: Il token della CI ha i permessi solo per questo!
+            "componentKeys": project,
             "organization":  org,
             "ps": 500,
             "p":  page,
             "resolved": "false" 
         }
         
-        # Ora possiamo passare il branch senza causare l'Errore 403
+        # Manteniamo la ricerca per branch per evitare il "SARIF vuoto"
         if branch and not branch.endswith("/merge"):
             params["branch"] = branch
             
