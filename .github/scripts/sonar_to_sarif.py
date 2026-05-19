@@ -1,17 +1,17 @@
 import json, urllib.request, urllib.parse, os, base64, time, sys
 
-# 1. LEGGERE DALLE VARIABILI D'AMBIENTE (Niente più nomi fissi nel codice!)
 token   = os.environ.get("SONAR_TOKEN")
 org     = os.environ.get("SONAR_ORG")
 project = os.environ.get("SONAR_PROJECT_KEY")
-branch  = os.environ.get("BRANCH_NAME") 
-base    = "https://sonarcloud.io"
+base    = os.environ.get("SONAR_HOST_URL", "https://sonarcloud.io").rstrip("/")
 
 if not all([token, org, project]):
-    print("ERRORE: Mancano le variabili d'ambiente SONAR_TOKEN, SONAR_ORG o SONAR_PROJECT")
+    print("ERRORE: Mancano le variabili d'ambiente SONAR_TOKEN, SONAR_ORG o SONAR_PROJECT_KEY")
     sys.exit(1)
 
-# 2. DIZIONARI PER LA TRADUZIONE DELLE SEVERITA'
+print(f"[DEBUG] Connessione a: {base}")
+print(f"[DEBUG] Org: {org} | Project: {project}")
+
 LEVEL = {
     "BLOCKER":  "error",
     "CRITICAL": "error",
@@ -25,29 +25,34 @@ SCORE = {
     "CRITICAL": "9.0",
     "MAJOR":    "7.5",
     "MINOR":    "5.5",
-    "INFO":     "2.0",          
+    "INFO":     "2.0",
 }
 
-# 3. FUNZIONE PER CHIAMARE LE API DI SONARCLOUD
 def api_get(path, params=None):
     url = f"{base}{path}"
     if params:
         url += "?" + urllib.parse.urlencode(params)
+    print(f"[DEBUG] GET {url}")
     req = urllib.request.Request(url)
     creds = base64.b64encode(f"{token}:".encode()).decode()
     req.add_header("Authorization", f"Basic {creds}")
-    with urllib.request.urlopen(req) as r:
-        return json.load(r)
+    try:
+        with urllib.request.urlopen(req) as r:
+            body = r.read()
+            print(f"[DEBUG] HTTP {r.status} — {len(body)} bytes")
+            return json.loads(body)
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()
+        print(f"[ERRORE] HTTP {e.code}: {body}")
+        raise
 
-# 4. ATTESA DEL COMPLETAMENTO DELL'ANALISI (Max 5 minuti)
+# Attesa completamento analisi
 print("Attendo completamento analisi SonarCloud...")
 for attempt in range(30):
     data = api_get("/api/ce/component", {"component": project})
-    tasks = data.get("queue", []) + (
-        [data["current"]] if data.get("current") else []
-    )
+    tasks = data.get("queue", []) + ([data["current"]] if data.get("current") else [])
     in_progress = [t for t in tasks if t.get("status") in ("IN_PROGRESS", "PENDING")]
-    
+
     if not in_progress:
         current = data.get("current", {})
         status  = current.get("status", "UNKNOWN")
@@ -56,43 +61,59 @@ for attempt in range(30):
             print("ATTENZIONE: l'analisi SonarCloud è fallita.")
             sys.exit(1)
         break
-        
+
     print(f"  Tentativo {attempt+1}/30: analisi ancora in corso, attendo 10s...")
     time.sleep(10)
 else:
     print("Timeout attesa analisi. Procedo comunque.")
 
-# 5. RECUPERO DELLE VULNERABILITA' (Paginazione)
-# 5. RECUPERO DELLE VULNERABILITA' (La via sicura e senza 403)
+# Recupero issue con debug esteso
 def fetch_issues():
-    issues, page, total = [], 1, None
-    while total is None or len(issues) < total:
+    issues, page = [], 1
+
+    while True:
         params = {
             "componentKeys": project,
             "organization":  org,
-            "ps": 500,
-            "p":  page,
-            # resolved: false ci garantisce di prendere TUTTI i problemi aperti, 
-            # saltando i filtri censuratori di SonarCloud.
-            "resolved": "false" 
+            "types":         "BUG,VULNERABILITY,CODE_SMELL,SECURITY_HOTSPOT",  # <-- AGGIUNTO
+            "ps":  500,
+            "p":   page,
+            "resolved": "false",
         }
-        
-        # NESSUN PARAMETRO BRANCH QUI! Cosi evitiamo il blocco di sicurezza (Errore 403).
-            
+
         data = api_get("/api/issues/search", params)
-        if total is None:
-            total = data.get("total", 0)
-            print(f"Totale issue trovate sul progetto base: {total}")
-            
+
+        total     = data.get("total", 0)
+        page_size = data.get("ps", 500)
+        returned  = len(data.get("issues", []))
+
+        print(f"[DEBUG] Pagina {page}: total={total}, ritornate={returned}")
+
+        if page == 1:
+            print(f"Totale issue trovate: {total}")
+            if total == 0:
+                # Stampa la risposta completa per capire cosa sta succedendo
+                print(f"[DEBUG] Risposta API completa: {json.dumps(data, indent=2)[:2000]}")
+
         issues.extend(data.get("issues", []))
-        if len(data.get("issues", [])) < 500:
+
+        # Condizione di uscita corretta
+        if len(issues) >= total or returned < page_size:
             break
+
         page += 1
+
     return issues
 
 issues = fetch_issues()
+print(f"[DEBUG] Issue totali recuperate: {len(issues)}")
 
-# 6. CONVERSIONE IN FORMATO SARIF PER GITHUB
+# Breakdown per severità
+from collections import Counter
+sev_count = Counter(i.get("severity", "UNKNOWN") for i in issues)
+print(f"[DEBUG] Distribuzione severità: {dict(sev_count)}")
+
+# Conversione SARIF
 rules, results = {}, []
 for i in issues:
     rid  = i.get("rule", "unknown")
@@ -108,10 +129,10 @@ for i in issues:
             "shortDescription": {"text": rid},
             "defaultConfiguration": {"level": LEVEL.get(sev, "warning")},
             "properties": {
-                "security-severity": SCORE.get(sev, "5.0") # TRUCCO PER VEDERE CRITICAL E HIGH
+                "security-severity": SCORE.get(sev, "5.0")
             }
         }
-        
+
     results.append({
         "ruleId": rid,
         "message": {"text": msg},
@@ -140,7 +161,6 @@ sarif = {
     }],
 }
 
-# 7. SALVATAGGIO DEL FILE SARIF DA PASSARE A GITHUB ACTIONS
 with open("sonarcloud.sarif", "w") as f:
     json.dump(sarif, f, indent=2)
 

@@ -35,7 +35,8 @@ jobs:
             SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
             SONAR_ORG: "lucazana14"
             SONAR_PROJECT_KEY: "lucazana14_VAmPI"
-            BRANCH_NAME: ${{ github.ref_name}}
+            SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+            BRANCH_NAME: ${{ github.ref_name }}
         run: |
             python3 .github/scripts/sonar_to_sarif.py
 
