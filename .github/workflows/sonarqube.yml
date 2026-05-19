@@ -24,6 +24,10 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.organization=lucazana14
+            -Dsonar.projectKey=lucazana14_VAmPI
         
       - name: Convert SonarQube issues to SARIF
         uses: vmvarela/sonarqube-sarif@v1
