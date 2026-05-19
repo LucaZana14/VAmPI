@@ -1,5 +1,7 @@
 import json, urllib.request, urllib.parse, os, base64, time, sys
+from collections import Counter
 
+# 1. VARIABILI D'AMBIENTE
 token   = os.environ.get("SONAR_TOKEN")
 org     = os.environ.get("SONAR_ORG")
 project = os.environ.get("SONAR_PROJECT_KEY")
@@ -12,6 +14,7 @@ if not all([token, org, project]):
 print(f"[DEBUG] Connessione a: {base}")
 print(f"[DEBUG] Org: {org} | Project: {project}")
 
+# 2. DIZIONARI PER LA TRADUZIONE DELLE SEVERITA'
 LEVEL = {
     "BLOCKER":  "error",
     "CRITICAL": "error",
@@ -28,6 +31,7 @@ SCORE = {
     "INFO":     "2.0",
 }
 
+# 3. FUNZIONE PER CHIAMARE LE API DI SONARCLOUD
 def api_get(path, params=None):
     url = f"{base}{path}"
     if params:
@@ -46,7 +50,7 @@ def api_get(path, params=None):
         print(f"[ERRORE] HTTP {e.code}: {body}")
         raise
 
-# Attesa completamento analisi
+# 4. ATTESA DEL COMPLETAMENTO DELL'ANALISI (Max 5 minuti)
 print("Attendo completamento analisi SonarCloud...")
 for attempt in range(30):
     data = api_get("/api/ce/component", {"component": project})
@@ -67,7 +71,10 @@ for attempt in range(30):
 else:
     print("Timeout attesa analisi. Procedo comunque.")
 
-# Recupero issue con debug esteso
+
+# 5. RECUPERO ISSUE NORMALI (BUG, VULNERABILITY, CODE_SMELL)
+# SECURITY_HOTSPOT non è un tipo valido per /api/issues/search,
+# ha un endpoint dedicato: /api/hotspots/search
 def fetch_issues():
     issues, page = [], 1
 
@@ -75,9 +82,9 @@ def fetch_issues():
         params = {
             "componentKeys": project,
             "organization":  org,
-            "types":         "BUG,VULNERABILITY,CODE_SMELL,SECURITY_HOTSPOT",  # <-- AGGIUNTO
-            "ps":  500,
-            "p":   page,
+            "types":         "BUG,VULNERABILITY,CODE_SMELL",  # SECURITY_HOTSPOT escluso
+            "ps":   500,
+            "p":    page,
             "resolved": "false",
         }
 
@@ -87,17 +94,15 @@ def fetch_issues():
         page_size = data.get("ps", 500)
         returned  = len(data.get("issues", []))
 
-        print(f"[DEBUG] Pagina {page}: total={total}, ritornate={returned}")
+        print(f"[DEBUG] Issues pagina {page}: total={total}, ritornate={returned}")
 
         if page == 1:
             print(f"Totale issue trovate: {total}")
             if total == 0:
-                # Stampa la risposta completa per capire cosa sta succedendo
                 print(f"[DEBUG] Risposta API completa: {json.dumps(data, indent=2)[:2000]}")
 
         issues.extend(data.get("issues", []))
 
-        # Condizione di uscita corretta
         if len(issues) >= total or returned < page_size:
             break
 
@@ -105,17 +110,70 @@ def fetch_issues():
 
     return issues
 
-issues = fetch_issues()
-print(f"[DEBUG] Issue totali recuperate: {len(issues)}")
 
-# Breakdown per severità
-from collections import Counter
-sev_count = Counter(i.get("severity", "UNKNOWN") for i in issues)
+# 6. RECUPERO HOTSPOT DI SICUREZZA (endpoint separato)
+# Gli hotspot non hanno un campo "severity", vengono mappati a CRITICAL
+def fetch_hotspots():
+    hotspots_as_issues = []
+    page = 1
+    total = None
+
+    while total is None or len(hotspots_as_issues) < total:
+        params = {
+            "projectKey":   project,
+            "organization": org,
+            "ps":   500,
+            "p":    page,
+            "status": "TO_REVIEW",  # solo hotspot non ancora revisionati
+        }
+
+        try:
+            data = api_get("/api/hotspots/search", params)
+        except Exception as e:
+            print(f"[WARN] Hotspot API non disponibile o errore: {e}")
+            break
+
+        if total is None:
+            total = data.get("paging", {}).get("total", 0)
+            print(f"[DEBUG] Totale hotspot trovati: {total}")
+
+        hotspots = data.get("hotspots", [])
+        returned = len(hotspots)
+        print(f"[DEBUG] Hotspot pagina {page}: ritornati={returned}")
+
+        # Normalizza ogni hotspot nel formato delle issue normali
+        for h in hotspots:
+            hotspots_as_issues.append({
+                "rule":      h.get("ruleKey", "unknown"),
+                "message":   h.get("message", "Security Hotspot"),
+                "severity":  "CRITICAL",   # gli hotspot non hanno severity propria
+                "component": h.get("component", ""),
+                "line":      h.get("line", 1),
+            })
+
+        if returned < 500:
+            break
+
+        page += 1
+
+    return hotspots_as_issues
+
+
+# 7. RECUPERO E UNIONE DI TUTTI I PROBLEMI
+issues   = fetch_issues()
+hotspots = fetch_hotspots()
+all_issues = issues + hotspots
+
+print(f"[DEBUG] Issue totali: {len(issues)} | Hotspot totali: {len(hotspots)}")
+print(f"[DEBUG] Problemi combinati: {len(all_issues)}")
+
+sev_count = Counter(i.get("severity", "UNKNOWN") for i in all_issues)
 print(f"[DEBUG] Distribuzione severità: {dict(sev_count)}")
 
-# Conversione SARIF
+
+# 8. CONVERSIONE IN FORMATO SARIF PER GITHUB
 rules, results = {}, []
-for i in issues:
+for i in all_issues:
     rid  = i.get("rule", "unknown")
     msg  = i.get("message", "")
     sev  = i.get("severity", "MAJOR")
@@ -161,6 +219,7 @@ sarif = {
     }],
 }
 
+# 9. SALVATAGGIO DEL FILE SARIF
 with open("sonarcloud.sarif", "w") as f:
     json.dump(sarif, f, indent=2)
 
