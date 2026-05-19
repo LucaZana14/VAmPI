@@ -29,6 +29,7 @@ jobs:
 
       - name: Esegui GitLeaks (Genera SARIF)
         uses: gitleaks/gitleaks-action@v2 
+        if: always()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
