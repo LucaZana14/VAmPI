@@ -4,6 +4,7 @@ import json, urllib.request, urllib.parse, os, base64, time, sys
 token   = os.environ.get("SONAR_TOKEN")
 org     = os.environ.get("SONAR_ORG")
 project = os.environ.get("SONAR_PROJECT_KEY")
+branch  = os.environ.get("BRANCH_NAME") 
 base    = "https://sonarcloud.io"
 
 if not all([token, org, project]):
@@ -65,18 +66,23 @@ else:
 def fetch_issues():
     issues, page, total = [], 1, None
     while total is None or len(issues) < total:
-        data = api_get("/api/issues/search", {
+        params = {
             "componentKeys": project,
             "organization":  org,
             "ps": 500,
             "p":  page,
-            "statuses": "OPEN,CONFIRMED,REOPENED",
-        })
+            "resolved": "false"
+        }
+        if branch and not branch.endswith("/merge"):
+            params["branch"] = branch
+            
+        data = api_get("/api/issues/search", params)
         if total is None:
-            total = data["total"]
-            print(f"Totale issue trovate: {total}")
-        issues.extend(data["issues"])
-        if len(data["issues"]) < 500:
+            total = data.get("total", 0)
+            print(f"Totale issue trovate sul branch {branch}: {total}")
+            
+        issues.extend(data.get("issues", []))
+        if len(data.get("issues", [])) < 500:
             break
         page += 1
     return issues
