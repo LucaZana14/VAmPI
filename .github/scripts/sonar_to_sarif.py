@@ -63,26 +63,26 @@ else:
     print("Timeout attesa analisi. Procedo comunque.")
 
 # 5. RECUPERO DELLE VULNERABILITA' (Paginazione)
+# 5. RECUPERO DELLE VULNERABILITA' (La via sicura e senza 403)
 def fetch_issues():
     issues, page, total = [], 1, None
     while total is None or len(issues) < total:
         params = {
-            # TORNIAMO A COMPONENTKEYS: Il token della CI ha i permessi solo per questo!
             "componentKeys": project,
             "organization":  org,
             "ps": 500,
             "p":  page,
+            # resolved: false ci garantisce di prendere TUTTI i problemi aperti, 
+            # saltando i filtri censuratori di SonarCloud.
             "resolved": "false" 
         }
         
-        # Manteniamo la ricerca per branch per evitare il "SARIF vuoto"
-        if branch and not branch.endswith("/merge"):
-            params["branch"] = branch
+        # NESSUN PARAMETRO BRANCH QUI! Cosi evitiamo il blocco di sicurezza (Errore 403).
             
         data = api_get("/api/issues/search", params)
         if total is None:
             total = data.get("total", 0)
-            print(f"Totale issue trovate sul branch {branch}: {total}")
+            print(f"Totale issue trovate sul progetto base: {total}")
             
         issues.extend(data.get("issues", []))
         if len(data.get("issues", [])) < 500:
@@ -91,6 +91,7 @@ def fetch_issues():
     return issues
 
 issues = fetch_issues()
+
 # 6. CONVERSIONE IN FORMATO SARIF PER GITHUB
 rules, results = {}, []
 for i in issues:
