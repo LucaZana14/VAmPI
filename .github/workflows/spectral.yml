@@ -29,20 +29,26 @@ jobs:
       - name: Run Spectral Scan
         continue-on-error: true
         run: |
-          npx spectral lint /Volumes/SSD 1TB/Lavoro/A-Cube_API/Progetti_test/API/VAmPI/openapi_specs/openapi3.yml \
+            npx spectral lint openapi_specs/openapi3.yml \
             --ruleset .spectral.yaml \
-            --format json \
-            --output spectral-results.json
+            --format json > spectral-results.json
 
       - name: Convert JSON to SARIF
         run: |
           cat << 'EOF' > convert.py
           import json
+          import os
           
+          # Controllo di sicurezza: se il file è vuoto (es. Spectral è crashato male), creiamo un JSON vuoto
+          if not os.path.exists("spectral-results.json") or os.path.getsize("spectral-results.json") == 0:
+              with open("spectral-results.json", "w") as f:
+                  f.write("[]")
+
           with open("spectral-results.json", "r") as f:
               issues = json.load(f)
               
-          with open("openapi.json", "r") as f:
+          # 2. MODIFICA QUI: Python deve leggere il file YAML di VAmPI
+          with open("openapi_specs/openapi3.yml", "r") as f:
               openapi_lines = f.readlines()
           
           sarif = {
@@ -71,7 +77,8 @@ jobs:
                   "message": {"text": issue.get("message", "")},
                   "locations": [{
                       "physicalLocation": {
-                          "artifactLocation": {"uri": "openapi.json"},
+                          # 3. MODIFICA QUI: L'URI che GitHub mostrerà nell'interfaccia
+                          "artifactLocation": {"uri": "openapi_specs/openapi3.yml"},
                           "region": {
                               "startLine": line_idx + 1,
                               "startColumn": issue.get("range", {}).get("start", {}).get("character", 0) + 1
@@ -86,7 +93,6 @@ jobs:
               json.dump(sarif, f, indent=2)
           EOF
           python3 convert.py
-
       - name: Upload Spectral results to GitHub
         uses: github/codeql-action/upload-sarif@v4
         if: always()
