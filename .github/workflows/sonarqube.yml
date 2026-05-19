@@ -1,0 +1,38 @@
+name: SonarQube Quality Scan
+
+on:
+  workflow_call
+
+jobs:
+  sonar-scan:
+    name: SonarQube Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write # Necessario per caricare il SARIF alla fine
+      contents: read
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Cruciale per SonarQube
+
+      - name: Esegui scansione SonarQube
+        # Se usi SonarCloud (la versione cloud gratuita per le repo pubbliche), 
+        # questo step farà tutto da solo con i token.
+        uses: sonarsource/sonarqube-scan-action@v8
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        
+      - name: Convert SonarQube issues to SARIF
+        uses: vmvarela/sonarqube-sarif@v1
+        with:
+          sonar-host-url: ${{ secrets.SONAR_HOST_URL }}
+          sonar-token: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Upload SARIF
+        if: github.event_name != 'pull_request'
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: sonarqube.sarif
