@@ -34,7 +34,9 @@ jobs:
         with:
           sonar-host-url: ${{ secrets.SONAR_HOST_URL }}
           sonar-token: ${{ secrets.SONAR_TOKEN }}
-          project-key: lucazana14_VAmPI
+          project-key: ${{ secrets.SONAR_PROJECT_KEY}}
+            
+            
 
       - name: Upload SARIF
         if: github.event_name != 'pull_request'
