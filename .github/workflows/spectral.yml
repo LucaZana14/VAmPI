@@ -29,7 +29,7 @@ jobs:
       - name: Run Spectral Scan
         continue-on-error: true
         run: |
-          npx spectral lint openapi_specs/openapi3.yml \
+          npx spectral lint /Volumes/SSD 1TB/Lavoro/A-Cube_API/Progetti_test/API/VAmPI/openapi_specs/openapi3.yml \
             --ruleset .spectral.yaml \
             --format json \
             --output spectral-results.json
