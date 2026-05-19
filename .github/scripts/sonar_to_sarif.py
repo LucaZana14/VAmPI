@@ -70,8 +70,6 @@ def fetch_issues():
             "organization":  org,
             "ps": 500,
             "p":  page,
-            # AGGIUNGIAMO I TIPI per non rischiare di avere un SARIF vuoto:
-            "types": "BUG,VULNERABILITY,CODE_SMELL",
             "statuses": "OPEN,CONFIRMED,REOPENED",
         })
         if total is None:
