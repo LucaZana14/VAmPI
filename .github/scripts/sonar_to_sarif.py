@@ -90,6 +90,7 @@ def fetch_issues():
         page += 1
     return issues
 
+issues = fetch_issues()
 # 6. CONVERSIONE IN FORMATO SARIF PER GITHUB
 rules, results = {}, []
 for i in issues:
