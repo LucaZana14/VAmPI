@@ -70,6 +70,7 @@ def fetch_issues():
             "organization":  org,
             "ps": 500,
             "p":  page,
+            "types": "BUG,VULNERABILITY,CODE_SMELL"
             "statuses": "OPEN,CONFIRMED,REOPENED",
         })
         if total is None:

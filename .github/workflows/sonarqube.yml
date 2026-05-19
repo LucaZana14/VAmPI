@@ -8,18 +8,16 @@ jobs:
     name: SonarQube Analysis
     runs-on: ubuntu-latest
     permissions:
-      security-events: write # Necessario per caricare il SARIF alla fine
+      security-events: write 
       contents: read
     
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Cruciale per SonarQube
+          fetch-depth: 0 
 
       - name: Esegui scansione SonarQube
-        # Se usi SonarCloud (la versione cloud gratuita per le repo pubbliche), 
-        # questo step farà tutto da solo con i token.
         uses: sonarsource/sonarqube-scan-action@v8
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -29,17 +27,16 @@ jobs:
             -Dsonar.organization=lucazana14
             -Dsonar.projectKey=lucazana14_VAmPI
 
-        
       - name: Convert SonarCloud issues to SARIF
         if: always()
         env:
+            # Sincronizziamo al millimetro i nomi con lo script Python
             SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-            SONAR_ORG: ${{ secrets.SONAR_ORG }}
-            SONAR_PROJECT: ${{secrets.SONAR_PROJECT_KEY}}
+            SONAR_ORG: "lucazana14"
+            SONAR_PROJECT_KEY: "lucazana14_VAmPI"
         run: |
             python3 .github/scripts/sonar_to_sarif.py
 
-            
       - name: Carica i risultati su GitHub Security
         uses: github/codeql-action/upload-sarif@v4 
         if: always()
