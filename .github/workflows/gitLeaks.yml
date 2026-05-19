@@ -1,0 +1,42 @@
+name: Secret Scanning - GitLeaks
+
+on:
+  workflow_call
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    name: GitLeaks Scan
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@v2.19.3 
+        with:
+          egress-policy: audit
+
+      - name: Checkout del codice
+        uses: actions/checkout@v6 
+        with:
+          fetch-depth: 0
+
+      - name: Esegui GitLeaks (Genera SARIF)
+        uses: gitleaks/gitleaks-action@v2 
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Questa riga è la chiave: genera il file che GitHub può leggere
+          args: --report-format sarif --report-path results.sarif
+          fail-action: false # Evitiamo che il job si blocchi, così carica comunque il report
+
+      - name: Carica i risultati su GitHub Security
+        uses: github/codeql-action/upload-sarif@v4 
+        if: always() # Carica i risultati anche se GitLeaks ha trovato segreti
+        with:
+          sarif_file: results.sarif
