@@ -18,3 +18,7 @@ jobs:
     gitleaks:
         name: run gitLeaks
         uses: ./.github/workflows/gitLeaks.yml
+
+    spectral: 
+        name: run Spectral
+        uses: ./.github/workflows/spectral.yml 

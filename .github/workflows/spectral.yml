@@ -1,0 +1,95 @@
+name: Spectral API Scan
+
+on:
+  workflow_call
+  
+permissions: 
+  contents: read
+  security-events: write
+  
+jobs:
+  spectral-lint:
+    name: Spectral API Linting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Spectral and OWASP
+        run: |
+          npm init -y
+          npm install @stoplight/spectral-cli @stoplight/spectral-owasp-ruleset
+
+      - name: Run Spectral Scan
+        continue-on-error: true
+        run: |
+          npx spectral lint openapi.json \
+            --ruleset .spectral.yaml \
+            --format json \
+            --output spectral-results.json
+
+      - name: Convert JSON to SARIF
+        run: |
+          cat << 'EOF' > convert.py
+          import json
+          
+          with open("spectral-results.json", "r") as f:
+              issues = json.load(f)
+              
+          with open("openapi.json", "r") as f:
+              openapi_lines = f.readlines()
+          
+          sarif = {
+              "version": "2.1.0",
+              "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+              "runs": [{
+                  "tool": {"driver": {"name": "Spectral", "rules": []}},
+                  "results": []
+              }]
+          }
+          
+          rules = {}
+          for issue in issues:
+              rule_id = str(issue.get("code", "unknown"))
+              if rule_id not in rules:
+                  rules[rule_id] = {"id": rule_id, "shortDescription": {"text": issue.get("message", "")}}
+              
+              sev = issue.get("severity", 1)
+              level = "error" if sev == 0 else "warning" if sev == 1 else "note"
+              
+              line_idx = issue.get("range", {}).get("start", {}).get("line", 0)
+              
+              sarif["runs"][0]["results"].append({
+                  "ruleId": rule_id,
+                  "level": level,
+                  "message": {"text": issue.get("message", "")},
+                  "locations": [{
+                      "physicalLocation": {
+                          "artifactLocation": {"uri": "openapi.json"},
+                          "region": {
+                              "startLine": line_idx + 1,
+                              "startColumn": issue.get("range", {}).get("start", {}).get("character", 0) + 1
+                          }
+                      }
+                  }]
+              })
+              
+          sarif["runs"][0]["tool"]["driver"]["rules"] = list(rules.values())
+          
+          with open("spectral-results.sarif", "w") as f:
+              json.dump(sarif, f, indent=2)
+          EOF
+          python3 convert.py
+
+      - name: Upload Spectral results to GitHub
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: spectral-results.sarif
+          category: spectral-api-linting

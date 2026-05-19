@@ -1,0 +1,7 @@
+extends:
+  - spectral:oas
+  - spectral:arazzo
+  - spectral:asyncapi
+  - "@stoplight/spectral-owasp-ruleset"
+
+rules: {}
