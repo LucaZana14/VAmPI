@@ -21,7 +21,7 @@ jobs:
         uses: sonarsource/sonarqube-scan-action@v8
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_HOST_URL: "https://sonarcloud.io"
         with:
           args: >
             -Dsonar.organization=lucazana14
@@ -35,7 +35,7 @@ jobs:
             SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
             SONAR_ORG: "lucazana14"
             SONAR_PROJECT_KEY: "lucazana14_VAmPI"
-            SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+            SONAR_HOST_URL: "https://sonarcloud.io"
             BRANCH_NAME: ${{ github.ref_name }}
         run: |
             python3 .github/scripts/sonar_to_sarif.py
