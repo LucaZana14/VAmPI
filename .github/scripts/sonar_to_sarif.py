@@ -87,10 +87,6 @@ def fetch_issues():
             "p":    page,
             "resolved": "false",
         }
-        branch = os.environ.get("BRANCH_NAME")
-        if branch:
-            params["branch"] = branch
-            print(f"[DEBUG] Filtro branch: {branch}")
             
         data = api_get("/api/issues/search", params)
 
