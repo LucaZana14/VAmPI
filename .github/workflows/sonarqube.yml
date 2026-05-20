@@ -28,7 +28,7 @@ jobs:
             -Dsonar.projectKey=lucazana14_VAmPI
             -Dsonar.sources=.
             -Dsonar.python.version=3
-            -Dsonar.branch.name=${{github.ref_name}}
+            -Dsonar.branch.name=master
 
       - name: Convert SonarCloud issues to SARIF
         if: always()
