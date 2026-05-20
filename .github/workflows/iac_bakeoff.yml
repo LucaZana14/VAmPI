@@ -83,16 +83,15 @@ jobs:
         # Snyk Container lavora meglio analizzando un'immagine reale
         run: docker build -t vampi-test:latest .
 
-      - name: Esegui Snyk Container
-        uses: snyk/actions/docker@master
+      - name: Installa Snyk CLI
+        uses: snyk/actions/setup@master 
         continue-on-error: true
+      - name: Esegui Snyk Container e genera SARIF
         env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }} 
-        with:
-          image: vampi-test:latest
-        # Usiamo --file=Dockerfile per fargli leggere anche i difetti di configurazione
-          args: --file=Dockerfile --sarif-file-output=snyk-results.sarif
-
+            SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }} 
+        run: |
+          snyk container test vampi-test:latest --file=Dockerfile --sarif > snyk-results.sarif || true
+          
       - name: Carica SARIF su GitHub
         uses: github/codeql-action/upload-sarif@v4 # Aggiornato a v4!
         if: always()
