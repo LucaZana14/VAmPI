@@ -69,7 +69,7 @@ jobs:
   # CONTENDENTE 3: SNYK (Snyk Ltd)
   # ==========================================
   run-snyk:
-    name: 🐶 Snyk Scan
+    name: 🐶 Snyk Container Scan
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -79,19 +79,24 @@ jobs:
       - name: Checkout del codice
         uses: actions/checkout@v4
 
-      - name: Esegui Snyk su Dockerfile
-        uses: snyk/actions/iac@master
+      - name: Build dell'immagine Docker (Il segreto di Snyk)
+        # Snyk Container lavora meglio analizzando un'immagine reale
+        run: docker build -t vampi-test:latest .
+
+      - name: Esegui Snyk Container
+        uses: snyk/actions/docker@master
         continue-on-error: true
         env:
-          # ATTENZIONE: Snyk richiede obbligatoriamente un token!
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }} 
         with:
-          file: Dockerfile
-          args: --sarif-file-output=snyk-results.sarif
+          image: vampi-test:latest
+        # Usiamo --file=Dockerfile per fargli leggere anche i difetti di configurazione
+          args: --file=Dockerfile --sarif-file-output=snyk-results.sarif
 
       - name: Carica SARIF su GitHub
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4 # Aggiornato a v4!
         if: always()
         with:
           sarif_file: snyk-results.sarif
-          category: snyk-iac
+          category: snyk-container
+          wait-for-processing: true
