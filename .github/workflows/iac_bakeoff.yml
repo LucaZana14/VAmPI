@@ -1,0 +1,97 @@
+name: IaC Security Bake-Off
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch: # Permette di lanciare la pipeline manualmente con un pulsante
+
+jobs:
+  # ==========================================
+  # CONTENDENTE 1: CHECKOV (Bridgecrew / Palo Alto)
+  # ==========================================
+  run-checkov:
+    name: 🛡️ Checkov Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout del codice
+        uses: actions/checkout@v4
+
+      - name: Esegui Checkov
+        uses: bridgecrewio/checkov-action@master
+        continue-on-error: true # Non ferma la pipeline se trova errori
+        with:
+          directory: .
+          output_format: cli,sarif
+          output_file_path: console,checkov-results.sarif
+
+      - name: Carica SARIF su GitHub
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: checkov-results.sarif
+          category: checkov-iac
+
+  # ==========================================
+  # CONTENDENTE 2: TRIVY (Aqua Security)
+  # ==========================================
+  run-trivy:
+    name: 🌊 Trivy Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout del codice
+        uses: actions/checkout@v4
+
+      - name: Esegui Trivy (IaC e Dockerfile)
+        uses: aquasecurity/trivy-action@master
+        continue-on-error: true
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Carica SARIF su GitHub
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-iac
+
+  # ==========================================
+  # CONTENDENTE 3: SNYK (Snyk Ltd)
+  # ==========================================
+  run-snyk:
+    name: 🐶 Snyk Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout del codice
+        uses: actions/checkout@v4
+
+      - name: Esegui Snyk su Dockerfile
+        uses: snyk/actions/iac@master
+        continue-on-error: true
+        env:
+          # ATTENZIONE: Snyk richiede obbligatoriamente un token!
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }} 
+        with:
+          file: Dockerfile
+          args: --sarif-file-output=snyk-results.sarif
+
+      - name: Carica SARIF su GitHub
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: snyk-results.sarif
+          category: snyk-iac
