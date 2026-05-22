@@ -38,3 +38,8 @@ jobs:
         name: run chechov
         needs: [gitleaks , spectral]
         uses: ./.github/workflows/checkov.yml 
+
+    Trivy:
+        name: run trivy
+        needs: [gitleaks , spectral]
+        uses: ./.github/workflows/trivy.yml 
