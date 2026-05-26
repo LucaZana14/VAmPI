@@ -42,7 +42,7 @@ jobs:
         continue-on-error: true
         with:
           scan-type: 'fs'
-          image-ref: '.'
+          scan-ref: '.'
           format: 'sarif'
           output: 'trivy-results-fs.sarif'
 
