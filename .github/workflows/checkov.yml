@@ -29,6 +29,7 @@ jobs:
         with:
           directory: .
           download_external_modules: true
+          framework: terraform,kubernetes,github_actions
           output_format: cli,sarif
           output_file_path: console,results.sarif
           soft_fail: true 
