@@ -1,4 +1,4 @@
-name: Trivy Docker+Image Scan
+name: Trivy Docker+Image Scan + FileSystem
 
 on:
   workflow_call
@@ -6,7 +6,7 @@ on:
 jobs:
 
   run-trivy:
-    name: 🌊 Trivy Scan
+    name: Trivy Scan
     runs-on: ubuntu-latest
     permissions:
       contents: read
