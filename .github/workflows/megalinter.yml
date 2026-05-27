@@ -25,18 +25,16 @@ jobs:
 
       - name: Esegui MegaLinter (Flavor Python)
         uses: oxsecurity/megalinter/flavors/python@v9  
+        if: always()
         env:
           VALIDATE_ALL_CODEBASE: true
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ENABLE: PYTHON,DOCKERFILE,YAML,JSON
-          
-          # Diciamo a MegaLinter di generare nativamente il file SARIF
           SARIF_STATUS: "true"
           SARIF_OUTPUT_FILE: "megalinter-results.sarif"
 
       - name: Carica SARIF su GitHub Security Tab
         uses: github/codeql-action/upload-sarif@v4
-        # "if: always()" assicura che il report venga caricato anche se MegaLinter trova errori di stile
         if: always() 
         with:
           sarif_file: "megalinter-results.sarif"
