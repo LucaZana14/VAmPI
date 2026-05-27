@@ -82,7 +82,6 @@ def fetch_issues():
         params = {
             "componentKeys": project,
             "organization":  org,
-            "types":         "BUG,VULNERABILITY,CODE_SMELL",  # SECURITY_HOTSPOT escluso
             "ps":   500,
             "p":    page,
             "resolved": "false",
