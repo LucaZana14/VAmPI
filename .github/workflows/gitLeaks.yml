@@ -26,16 +26,35 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Esegui GitLeaks (Genera SARIF)
-        uses: gitleaks/gitleaks-action@v2 
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: true
-          GITLEAKS_ENABLE_SUMMARY: true
-          GITLEAKS_CONFIG: "" 
-        continue-on-error: true
+      - name: Installa gitleaks
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz \
+            | tar -xz -C /tmp
+          sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Esegui gitleaks su tutta la repo
+        run: |
+          gitleaks detect \
+            --source . \
+            --report-format sarif \
+            --report-path results.sarif \
+            --redact \
+            --exit-code 0 \
+            --verbose
+
+      - name: Debug — quanti leak trovati
+        if: always()
+        run: |
+          if [ -f results.sarif ]; then
+            python3 -c "import json; d=json.load(open('results.sarif')); print('Leak trovati:', sum(len(r['results']) for r in d['runs']))"
+          else
+            echo "results.sarif non generato!"
+            exit 1
+          fi
+
       - name: Carica i risultati su GitHub Security
-        uses: github/codeql-action/upload-sarif@v4 
-        if: always() # Carica i risultati anche se GitLeaks ha trovato segreti
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: results.sarif
