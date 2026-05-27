@@ -17,7 +17,7 @@ jobs:
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@v2.19.3 
+        uses: step-security/harden-runner@v2 
         with:
           egress-policy: audit
 
@@ -28,14 +28,11 @@ jobs:
 
       - name: Esegui GitLeaks (Genera SARIF)
         uses: gitleaks/gitleaks-action@v2 
-        if: always()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          # Questa riga è la chiave: genera il file che GitHub può leggere
-          args: --report-format sarif --report-path results.sarif
-          fail-action: false # Evitiamo che il job si blocchi, così carica comunque il report
-
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: true
+          GITLEAKS_ENABLE_SUMMARY: true
+        continue-on-error: true
       - name: Carica i risultati su GitHub Security
         uses: github/codeql-action/upload-sarif@v4 
         if: always() # Carica i risultati anche se GitLeaks ha trovato segreti
