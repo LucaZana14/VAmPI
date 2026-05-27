@@ -33,7 +33,6 @@ jobs:
       - name: Convert SonarCloud issues to SARIF
         if: always()
         env:
-            # Sincronizziamo al millimetro i nomi con lo script Python
             SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
             SONAR_ORG: "lucazana14"
             SONAR_PROJECT_KEY: "lucazana14_VAmPI"
