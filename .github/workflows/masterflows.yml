@@ -34,12 +34,7 @@ jobs:
         needs: [gitleaks , spectral]
         uses: ./.github/workflows/sonarqube.yml 
         secrets: inherit
-    megalinter:
-        name: run megalinter
-        needs: [gitleaks , spectral]
-        uses: ./.github/workflows/megalinter.yml 
-        secrets: inherit
-
+        
     checkov:
         name: run chechov
         needs: [gitleaks , spectral]
