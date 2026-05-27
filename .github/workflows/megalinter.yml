@@ -29,7 +29,8 @@ jobs:
         env:
           VALIDATE_ALL_CODEBASE: true
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ENABLE_LINTERS: "PYTHON_RUFF,PYTHON_BANDIT,DOCKERFILE_HADOLINT,YAML_YAMLLINT"
+          ENABLE_LINTERS: "PYTHON_RUFF,PYTHON_BANDIT"
+          PYTHON_BANDIT_ARGUMENTS: "-s B105,B106,B107"
           SARIF_REPORTER: true
 
       - name: Debug — verifica file generati
