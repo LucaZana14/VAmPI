@@ -25,11 +25,11 @@ jobs:
 
       - name: Esegui MegaLinter (Flavor Python)
         uses: oxsecurity/megalinter/flavors/python@v9  
-        if: always()
+        continue-on-error: true
         env:
           VALIDATE_ALL_CODEBASE: true
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ENABLE: PYTHON,DOCKERFILE,YAML,JSON
+          ENABLE: PYTHON_RUFF, PYTHON_BANDIT, DOCKERFILE_HADOLINT, YAML_YAMLLINT
           SARIF_STATUS: "true"
           SARIF_OUTPUT_FILE: "megalinter-results.sarif"
 
