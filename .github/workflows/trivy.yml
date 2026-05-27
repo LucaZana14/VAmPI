@@ -50,8 +50,8 @@ jobs:
         uses: aquasecurity/trivy-action@master
         continue-on-error: true
         with:
-          scan-type: 'fs'
-          scan-ref: '.'
+          scan-type: 'image'
+          scan-ref: 'vampi-test:latest'
           format: 'cyclonedx' 
           output: 'bom.json' 
 
