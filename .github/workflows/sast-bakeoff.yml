@@ -1,0 +1,61 @@
+name: "SAST Bake-Off: CodeQL vs Semgrep"
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch: # Ti permette di lanciare la sfida manualmente dal tasto "Run workflow"
+
+permissions:
+  contents: read
+  security-events: write # Fondamentale per caricare i report SARIF
+  actions: read
+
+jobs:
+  # ==========================================
+  # CONTENDENTE 1: CodeQL (Taint Tracking Profondo)
+  # ==========================================
+  codeql:
+    name: 🎯 CodeQL Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del codice
+        uses: actions/checkout@v4
+
+      - name: Inizializza CodeQL (Solo Python)
+        uses: github/codeql-action/init@v4
+        with:
+          languages: 'python'
+          # CodeQL usa il suo database relazionale per mappare i flussi di dati
+
+      - name: Esegui Analisi CodeQL
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:python/codeql"
+          wait-for-processing: true
+
+  # ==========================================
+  # CONTENDENTE 2: Semgrep (Pattern Matching Veloce)
+  # ==========================================
+  semgrep:
+    name: ⚡ Semgrep Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del codice
+        uses: actions/checkout@v4
+
+      - name: Installa Semgrep
+        # Semgrep è un tool Python leggerissimo, lo installiamo in 2 secondi
+        run: python -m pip install semgrep
+
+      - name: Esegui Semgrep (Regole Auto)
+        # "--config auto" dice a Semgrep di scaricare le regole migliori per Python/Flask
+        run: semgrep scan --config auto --sarif --output semgrep-results.sarif
+        continue-on-error: true # FONDAMENTALE: Non bloccare se trova errori, altrimenti non carica il SARIF!
+
+      - name: Carica SARIF Semgrep su GitHub
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: semgrep-results.sarif
+          category: semgrep-sast
+          wait-for-processing: true
