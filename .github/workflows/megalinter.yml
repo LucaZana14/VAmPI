@@ -37,6 +37,6 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         if: always() 
         with:
-          sarif_file: "megalinter-results.sarif"
+          sarif_file: "megalinter-reports/megalinter-results.sarif"
           category: "megalinter-quality"
           wait-for-processing: true
