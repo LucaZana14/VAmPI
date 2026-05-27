@@ -33,6 +33,7 @@ jobs:
         name: run sonarqube
         needs: [gitleaks , spectral]
         uses: ./.github/workflows/sonarqube.yml 
+        secrets: inherit
 
     checkov:
         name: run chechov
