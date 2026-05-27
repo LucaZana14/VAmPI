@@ -1,0 +1,38 @@
+name: "Code Quality - MegaLinter"
+
+on:
+  workflow_call
+
+permissions:
+  contents: read
+  security-events: write # FONDAMENTALE: permette a MegaLinter di scrivere nella tab Security
+
+jobs:
+  megalinter:
+    name: MegaLinter Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del codice
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Permette a MegaLinter di analizzare la storia del codice se necessario
+
+      - name: Esegui MegaLinter (Flavor Python)
+        # Usiamo la versione ottimizzata per Python, Docker e YAML per massima velocità
+        uses: oxsecurity/megalinter/flavors/python@v9  
+        env:
+          VALIDATE_ALL_CODEBASE: true
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Token automatico di GitHub, nessuna chiave esterna!
+          
+          # Diciamo a MegaLinter di generare nativamente il file SARIF
+          SARIF_STATUS: "true"
+          SARIF_OUTPUT_FILE: "megalinter-results.sarif"
+
+      - name: Carica SARIF su GitHub Security Tab
+        uses: github/codeql-action/upload-sarif@v4
+        # "if: always()" assicura che il report venga caricato anche se MegaLinter trova errori di stile
+        if: always() 
+        with:
+          sarif_file: "megalinter-results.sarif"
+          category: "megalinter-quality"
+          wait-for-processing: true
