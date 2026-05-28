@@ -14,22 +14,62 @@ if not all([token, org, project]):
 print(f"[DEBUG] Connessione a: {base}")
 print(f"[DEBUG] Org: {org} | Project: {project}")
 
-# 2. DIZIONARI PER LA TRADUZIONE DELLE SEVERITA'
-LEVEL = {
-    "BLOCKER":  "error",
-    "CRITICAL": "error",
-    "MAJOR":    "error",
-    "MINOR":    "warning",
-    "INFO":     "note",
-}
+# 2. SCORING DIFFERENZIATO PER TIPO + SEVERITA'
+#
+# Il problema del vecchio script: usava solo "severity", quindi un CODE_SMELL
+# marcato CRITICAL (es. "duplichi questa stringa 27 volte") riceveva
+# security-severity 9.0 e GitHub lo mostrava come Critical, generando
+# falsi allarmi di sicurezza.
+#
+# Soluzione: il security-severity (il numero che GitHub usa per Critical/High)
+# dipende dal TIPO di problema, non solo dalla severita':
+#   - VULNERABILITY / SECURITY_HOTSPOT -> veri rischi di sicurezza -> score alto
+#   - BUG -> problema di affidabilita', rischio medio -> score medio
+#   - CODE_SMELL -> manutenibilita', NON sicurezza -> score basso (mai Critical)
+#
+# GitHub: >=9.0 Critical | 7.0-8.9 High | 4.0-6.9 Medium | 0.1-3.9 Low
 
-SCORE = {
-    "BLOCKER":  "9.5",
-    "CRITICAL": "9.0",
-    "MAJOR":    "7.5",
-    "MINOR":    "5.5",
-    "INFO":     "2.0",
-}
+def compute_score(issue_type, severity):
+    """Security-severity in base al tipo. I CODE_SMELL non superano mai Medium."""
+    if issue_type in ("VULNERABILITY", "SECURITY_HOTSPOT"):
+        return {
+            "BLOCKER": "9.5", "CRITICAL": "9.0", "MAJOR": "7.5",
+            "MINOR": "5.0", "INFO": "3.0",
+        }.get(severity, "5.0")
+
+    if issue_type == "BUG":
+        return {
+            "BLOCKER": "7.0", "CRITICAL": "6.0", "MAJOR": "5.0",
+            "MINOR": "3.0", "INFO": "1.0",
+        }.get(severity, "4.0")
+
+    # CODE_SMELL e resto: manutenibilita', mai sicurezza alta
+    return {
+        "BLOCKER": "3.5", "CRITICAL": "3.0", "MAJOR": "2.0",
+        "MINOR": "1.0", "INFO": "0.5",
+    }.get(severity, "1.0")
+
+
+def compute_level(issue_type, severity):
+    """Level SARIF (error/warning/note). I CODE_SMELL non diventano mai 'error'."""
+    if issue_type in ("VULNERABILITY", "SECURITY_HOTSPOT"):
+        return {
+            "BLOCKER": "error", "CRITICAL": "error", "MAJOR": "error",
+            "MINOR": "warning", "INFO": "note",
+        }.get(severity, "warning")
+
+    if issue_type == "BUG":
+        return {
+            "BLOCKER": "error", "CRITICAL": "error", "MAJOR": "warning",
+            "MINOR": "warning", "INFO": "note",
+        }.get(severity, "warning")
+
+    # CODE_SMELL: mai error
+    return {
+        "BLOCKER": "warning", "CRITICAL": "warning", "MAJOR": "warning",
+        "MINOR": "note", "INFO": "note",
+    }.get(severity, "note")
+
 
 # 3. FUNZIONE PER CHIAMARE LE API DI SONARCLOUD
 def api_get(path, params=None):
@@ -43,12 +83,13 @@ def api_get(path, params=None):
     try:
         with urllib.request.urlopen(req) as r:
             body = r.read()
-            print(f"[DEBUG] HTTP {r.status} — {len(body)} bytes")
+            print(f"[DEBUG] HTTP {r.status} -- {len(body)} bytes")
             return json.loads(body)
     except urllib.error.HTTPError as e:
         body = e.read().decode()
         print(f"[ERRORE] HTTP {e.code}: {body}")
         raise
+
 
 # 4. ATTESA DEL COMPLETAMENTO DELL'ANALISI (Max 5 minuti)
 print("Attendo completamento analisi SonarCloud...")
@@ -62,7 +103,7 @@ for attempt in range(30):
         status  = current.get("status", "UNKNOWN")
         print(f"Analisi completata con status: {status}")
         if status == "FAILED":
-            print("ATTENZIONE: l'analisi SonarCloud è fallita.")
+            print("ATTENZIONE: l'analisi SonarCloud e' fallita.")
             sys.exit(1)
         break
 
@@ -72,9 +113,7 @@ else:
     print("Timeout attesa analisi. Procedo comunque.")
 
 
-# 5. RECUPERO ISSUE NORMALI (BUG, VULNERABILITY, CODE_SMELL)
-# SECURITY_HOTSPOT non è un tipo valido per /api/issues/search,
-# ha un endpoint dedicato: /api/hotspots/search
+# 5. RECUPERO ISSUE (BUG, VULNERABILITY, CODE_SMELL)
 def fetch_issues():
     issues, page = [], 1
 
@@ -86,7 +125,7 @@ def fetch_issues():
             "p":    page,
             "resolved": "false",
         }
-            
+
         data = api_get("/api/issues/search", params)
 
         total     = data.get("total", 0)
@@ -111,7 +150,6 @@ def fetch_issues():
 
 
 # 6. RECUPERO HOTSPOT DI SICUREZZA (endpoint separato)
-# Gli hotspot non hanno un campo "severity", vengono mappati a CRITICAL
 def fetch_hotspots():
     hotspots_as_issues = []
     page = 1
@@ -123,7 +161,7 @@ def fetch_hotspots():
             "organization": org,
             "ps":   500,
             "p":    page,
-            "status": "TO_REVIEW",  # solo hotspot non ancora revisionati
+            "status": "TO_REVIEW",
         }
 
         try:
@@ -140,12 +178,16 @@ def fetch_hotspots():
         returned = len(hotspots)
         print(f"[DEBUG] Hotspot pagina {page}: ritornati={returned}")
 
-        # Normalizza ogni hotspot nel formato delle issue normali
+        # vulnerabilityProbability (HIGH/MEDIUM/LOW) indica la gravita' reale
+        prob_to_sev = {"HIGH": "CRITICAL", "MEDIUM": "MAJOR", "LOW": "MINOR"}
+
         for h in hotspots:
+            prob = h.get("vulnerabilityProbability", "MEDIUM")
             hotspots_as_issues.append({
                 "rule":      h.get("ruleKey", "unknown"),
                 "message":   h.get("message", "Security Hotspot"),
-                "severity":  "CRITICAL",   # gli hotspot non hanno severity propria
+                "severity":  prob_to_sev.get(prob, "MAJOR"),
+                "type":      "SECURITY_HOTSPOT",
                 "component": h.get("component", ""),
                 "line":      h.get("line", 1),
             })
@@ -158,7 +200,7 @@ def fetch_hotspots():
     return hotspots_as_issues
 
 
-# 7. RECUPERO E UNIONE DI TUTTI I PROBLEMI
+# 7. RECUPERO E UNIONE
 issues   = fetch_issues()
 hotspots = fetch_hotspots()
 all_issues = issues + hotspots
@@ -166,34 +208,41 @@ all_issues = issues + hotspots
 print(f"[DEBUG] Issue totali: {len(issues)} | Hotspot totali: {len(hotspots)}")
 print(f"[DEBUG] Problemi combinati: {len(all_issues)}")
 
-sev_count = Counter(i.get("severity", "UNKNOWN") for i in all_issues)
-print(f"[DEBUG] Distribuzione severità: {dict(sev_count)}")
+type_count = Counter(i.get("type", "UNKNOWN") for i in all_issues)
+print(f"[DEBUG] Distribuzione per tipo: {dict(type_count)}")
 
 
-# 8. CONVERSIONE IN FORMATO SARIF PER GITHUB
+# 8. CONVERSIONE IN FORMATO SARIF
 rules, results = {}, []
 for i in all_issues:
-    rid  = i.get("rule", "unknown")
-    msg  = i.get("message", "")
-    sev  = i.get("severity", "MAJOR")
-    comp = i.get("component", "")
-    path = comp.split(":", 2)[-1] if ":" in comp else comp
-    line = i.get("line", 1) or 1
+    rid   = i.get("rule", "unknown")
+    msg   = i.get("message", "")
+    sev   = i.get("severity", "MAJOR")
+    itype = i.get("type", "CODE_SMELL")  # default prudente
+    comp  = i.get("component", "")
+    path  = comp.split(":", 2)[-1] if ":" in comp else comp
+    line  = i.get("line", 1) or 1
+
+    score = compute_score(itype, sev)
+    level = compute_level(itype, sev)
 
     if rid not in rules:
         rules[rid] = {
             "id": rid,
-            "shortDescription": {"text": rid},
-            "defaultConfiguration": {"level": LEVEL.get(sev, "warning")},
+            "shortDescription": {"text": f"[{itype}] {rid}"},
+            "defaultConfiguration": {"level": level},
             "properties": {
-                "security-severity": SCORE.get(sev, "5.0")
+                "security-severity": score,
+                "sonar-type": itype,
+                "sonar-severity": sev,
+                "tags": ["security"] if itype in ("VULNERABILITY", "SECURITY_HOTSPOT") else [itype.lower()],
             }
         }
 
     results.append({
         "ruleId": rid,
-        "message": {"text": msg},
-        "level":   LEVEL.get(sev, "warning"),
+        "message": {"text": f"[{itype}/{sev}] {msg}"},
+        "level":   level,
         "locations": [{
             "physicalLocation": {
                 "artifactLocation": {"uri": path, "uriBaseId": "%SRCROOT%"},
@@ -218,8 +267,15 @@ sarif = {
     }],
 }
 
-# 9. SALVATAGGIO DEL FILE SARIF
+# 9. SALVATAGGIO
 with open("sonarcloud.sarif", "w") as f:
     json.dump(sarif, f, indent=2)
 
+real_critical = sum(
+    1 for i in all_issues
+    if i.get("type") in ("VULNERABILITY", "SECURITY_HOTSPOT")
+    and i.get("severity") in ("BLOCKER", "CRITICAL")
+)
 print(f"SARIF generato: {len(results)} risultati, {len(rules)} regole")
+print(f"[RIEPILOGO] Veri Critical di SICUREZZA (vuln/hotspot): {real_critical}")
+print("[RIEPILOGO] I code smell NON inquinano piu' la severita' di sicurezza")
