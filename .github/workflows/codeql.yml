@@ -37,3 +37,11 @@ jobs:
 
     - name: Esegui l'Analisi CodeQL
       uses: github/codeql-action/analyze@v4 
+
+    - name: Mobb auto-fixer
+      uses: mobb-dev/action@v1 
+      if: github.event_name == 'pull_request'
+      with: 
+        api-key: ${{ secrets.MOBB_API_TOKEN }}
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        report-file: ${{ steps.codeql_step.outputs.sarif-output }}/python.sarif
