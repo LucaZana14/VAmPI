@@ -1,0 +1,31 @@
+name: Mobb Auto-Fixer per CodeQL
+
+on:
+  workflow_run:
+    workflows: ["Master Security Pipeline"]
+    types:
+      - completed
+
+permissions:
+  pull-requests: write
+  security-events: write
+  statuses: write
+  contents: write
+  issues: write
+
+jobs:
+  mobb_auto_remediation:
+    name: Genera Patch con Intelligenza Artificiale
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }} 
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Esegui Mobb Fixer
+        uses: mobb-dev/codeql-mobb-fixer-action@v1.1 
+        with:
+          mobb-api-token: ${{ secrets.MOBB_API_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          mobb-project-name: "VAmPI-AutoFix"
