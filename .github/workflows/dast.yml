@@ -60,11 +60,12 @@ jobs:
           EOF
 
       # 4. Lanciamo ZAP direttamente tramite Docker.
+      # Aggiungiamo --network host per permettere a ZAP di vedere il "localhost" di GitHub Actions
       - name: Esegui scansione OWASP ZAP (Automation Framework)
         run: |
-          docker run --user root -v ${{ github.workspace }}:/zap/wrk/:rw -t zaproxy/zap-stable zap.sh -cmd -autorun /zap/wrk/vampi-zap.yaml
-
-      # 5. Carichiamo i risultati SARIF sulla Dashboard
+          docker run --user root --network host -v ${{ github.workspace }}:/zap/wrk/:rw -t zaproxy/zap-stable zap.sh -cmd -autorun /zap/wrk/vampi-zap.yaml
+      
+          # 5. Carichiamo i risultati SARIF sulla Dashboard
       - name: Upload dei risultati DAST su GitHub Security
         uses: github/codeql-action/upload-sarif@v4
         if: always()
