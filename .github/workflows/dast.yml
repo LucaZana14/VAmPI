@@ -8,7 +8,6 @@ jobs:
     name: OWASP ZAP API Scan
     runs-on: ubuntu-latest
     
-    # PERMESSI CRITICI: Servono a GitHub per accettare il file SARIF e scrivere i ticket
     permissions:
       issues: write
       contents: read
@@ -24,29 +23,40 @@ jobs:
           docker compose up --build -d
           sleep 15 
 
-      # 2. Scateniamo ZAP abilitando la generazione del file SARIF
-      - name: Esegui scansione OWASP ZAP
-        uses: zaproxy/action-api-scan@v0.9.0
-        with:
-          target: 'http://localhost:5050/openapi.json'
-          format: 'openapi'
-          fail_action: false
-          # Chiediamo esplicitamente a ZAP di generare il file SARIF nella cartella di lavoro
-          cmd_options: '-r zap_report.html -z "-addoninstall sarif" -J zap_report.json'
+      # 2. Creiamo al volo il file di configurazione ufficiale di ZAP (Automation Framework)
+      # Questo dice a ZAP in modo inequivocabile di generare il formato 'sarif' nominato 'results'
+      - name: Creazione configurazione ZAP Automation
+        run: |
+          cat << 'EOF' > vampi-zap.yaml
+          env:
+            target: "http://localhost:5050"
+            contexts:
+              - name: "VAmPI-Context"
+                urls:
+                  - "http://localhost:5050"
+          jobs:
+            - type: openapi
+              parameters:
+                apiUrl: "http://localhost:5050/openapi.json"
+            - type: passiveScan-config
+            - type: activeScan
+            - type: report
+              parameters:
+                template: "sarif"
+                reportDir: "/zap/wrk"
+                reportFile: "results"
+          EOF
 
-      # 3. Carichiamo i risultati SARIF nella tab Security di GitHub
+      # 3. Lanciamo ZAP direttamente tramite Docker.
+      # Usiamo '--user root' per garantire che Docker abbia i permessi di scrivere il file sul server di GitHub
+      - name: Esegui scansione OWASP ZAP (Automation Framework)
+        run: |
+          docker run --user root -v ${{ github.workspace }}:/zap/wrk/:rw -t zaproxy/zap-stable zap.sh -cmd -autorun /zap/wrk/vampi-zap.yaml
+
+      # 4. Carichiamo i risultati SARIF aggiornando l'Action alla v4 (Risolve il warning del log!)
       - name: Upload dei risultati DAST su GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
-        if: always() # Carica i risultati anche se ZAP ha trovato delle vulnerabilità
+        uses: github/codeql-action/upload-sarif@v4
+        if: always() # Esegui l'upload anche se vengono trovate vulnerabilità
         with:
-          # L'Action di ZAP genera automaticamente un file chiamato 'results.sarif' nella root
           sarif_file: 'results.sarif'
           category: 'owasp-zap-dast'
-
-      # 4. Mantieni comunque il report HTML come backup scaricabile (opzionale ma comodo)
-      - name: Salva il Report HTML di backup
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: zap-dast-html-report
-          path: report_html.html
