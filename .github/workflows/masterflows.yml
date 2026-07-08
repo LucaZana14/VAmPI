@@ -10,6 +10,7 @@ permissions:
     contents: read
     security-events: write
     actions: read
+    issues: write
 concurrency:
     group: ${{ github.workflow }}-${{github.ref}}
     cancel-in-progress: true
