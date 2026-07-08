@@ -23,40 +23,38 @@ jobs:
           docker compose up --build -d
           sleep 15 
 
-      # 2. Creiamo al volo il file di configurazione ufficiale di ZAP (Automation Framework)
-      # Questo dice a ZAP in modo inequivocabile di generare il formato 'sarif' nominato 'results'
+        # 2. Creiamo al volo il file di configurazione ufficiale di ZAP (Automation Framework)
       - name: Creazione configurazione ZAP Automation
         run: |
-          cat << 'EOF' > vampi-zap.yaml
-          env:
-            target: "http://localhost:5050"
-            contexts:
-              - name: "VAmPI-Context"
-                urls:
-                  - "http://localhost:5050"
-          jobs:
-            - type: openapi
-              parameters:
-                apiUrl: "http://localhost:5050/openapi.json"
-            - type: passiveScan-config
-            - type: activeScan
-            - type: report
-              parameters:
-                template: "sarif"
-                reportDir: "/zap/wrk"
-                reportFile: "results"
-          EOF
+            cat << 'EOF' > vampi-zap.yaml
+            env:
+                contexts:
+                - name: "VAmPI-Context"
+                    urls:
+                    - "http://localhost:5050"
+            jobs:
+                - type: openapi
+                parameters:
+                    apiUrl: "http://localhost:5050/openapi.json"
+                - type: passiveScan-config
+                - type: activeScan
+                - type: report
+                parameters:
+                    template: "sarif-json"
+                    reportDir: "/zap/wrk"
+                    reportFile: "results"
+            EOF
 
-      # 3. Lanciamo ZAP direttamente tramite Docker.
-      # Usiamo '--user root' per garantire che Docker abbia i permessi di scrivere il file sul server di GitHub
-      - name: Esegui scansione OWASP ZAP (Automation Framework)
-        run: |
-          docker run --user root -v ${{ github.workspace }}:/zap/wrk/:rw -t zaproxy/zap-stable zap.sh -cmd -autorun /zap/wrk/vampi-zap.yaml
+            # 3. Lanciamo ZAP direttamente tramite Docker.
+            - name: Esegui scansione OWASP ZAP (Automation Framework)
+            run: |
+            docker run --user root -v ${{ github.workspace }}:/zap/wrk/:rw -t zaproxy/zap-stable zap.sh -cmd -autorun /zap/wrk/vampi-zap.yaml
 
-      # 4. Carichiamo i risultati SARIF aggiornando l'Action alla v4 (Risolve il warning del log!)
-      - name: Upload dei risultati DAST su GitHub Security
-        uses: github/codeql-action/upload-sarif@v4
-        if: always() # Esegui l'upload anche se vengono trovate vulnerabilità
-        with:
-          sarif_file: 'results.sarif'
-          category: 'owasp-zap-dast'
+            # 4. Carichiamo i risultati SARIF (che ora si chiama results.json)
+            - name: Upload dei risultati DAST su GitHub Security
+            uses: github/codeql-action/upload-sarif@v4
+            if: always() 
+            with:
+            # NOTA: Ora cerchiamo il file .json generato da ZAP!
+            sarif_file: 'results.json'
+            category: 'owasp-zap-dast'
