@@ -64,12 +64,15 @@ jobs:
         run: |
           docker run --user root --network host -v ${{ github.workspace }}:/zap/wrk/:rw -t zaproxy/zap-stable zap.sh -cmd -autorun /zap/wrk/vampi-zap.yaml
 
-      # 5. TRADUTTORE SARIF AVANZATO: Bonifica ricorsiva di qualsiasi URL dinamico nel JSON
+      # 5. TRADUTTORE SARIF AVANZATO: Riprendiamo i permessi e bonifichiamo il JSON
       - name: Adatta il SARIF per GitHub Code Scanning
         if: always()
         run: |
+          # FIX CRITICO: Docker ha creato il file come root. Ce ne riappropriamo per poterlo modificare!
+          sudo chown $USER:$USER results.json
+          
           python3 -c "
-          import json
+          import json, sys
 
           def clean_uris(obj):
               if isinstance(obj, dict):
@@ -86,17 +89,18 @@ jobs:
               with open('results.json', 'r') as f:
                   data = json.load(f)
               
-              # Avvia la bonifica a tappeto su tutto il file
               clean_uris(data)
               
               with open('results.json', 'w') as f:
                   json.dump(data, f)
               print('SARIF bonificato con successo!')
           except Exception as e:
-              print(f'Errore durante la bonifica: {e}')
+              # Se qualcosa va storto, blocchiamo la pipeline e gridiamo al lupo!
+              print(f'Errore FATALE durante la bonifica: {e}')
+              sys.exit(1) 
           "
 
-      # 6. Carichiamo i risultati SARIF (ora perfettamente compatibili)
+      # 6. Carichiamo i risultati SARIF 
       - name: Upload dei risultati DAST su GitHub Security
         uses: github/codeql-action/upload-sarif@v4
         if: always()
