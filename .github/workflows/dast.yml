@@ -26,19 +26,12 @@ jobs:
       - name: Setup DB e Auth Token
         id: auth
         run: |
-          # 2a. Popola il database vuoto creando le tabelle necessarie
           curl -s http://localhost:5050/createdb > /dev/null
-          
-          # 2b. Registra un nuovo utente dedicato a ZAP
           curl -s -X POST "http://localhost:5050/users/v1/register" -H "Content-Type: application/json" -d '{"username": "zap_user", "password": "zap_password", "email": "zap@test.com"}' > /dev/null
-          
-          # 2c. Fai il login con l'utente appena creato ed estrai SOLO il token usando 'jq'
           TOKEN=$(curl -s -X POST "http://localhost:5050/users/v1/login" -H "Content-Type: application/json" -d '{"username": "zap_user", "password": "zap_password"}' | jq -r .auth_token)
-          
-          # 2d. Salva il token nelle variabili d'ambiente di GitHub in modo sicuro
           echo "API_TOKEN=$TOKEN" >> $GITHUB_ENV
 
-      # 3. Creiamo al volo il file di configurazione ufficiale di ZAP (Automation Framework)
+      # 3. Creiamo al volo il file di configurazione ufficiale di ZAP
       - name: Creazione configurazione ZAP Automation
         run: |
           cat << 'EOF' > vampi-zap.yaml
@@ -49,12 +42,11 @@ jobs:
                   - http://localhost:5050
           jobs:
             - type: replacer
-              parameters:
-                description: Iniezione Auth Token
-                matchType: req_header_str
-                matchString: Authorization
-                # Inietta la variabile d'ambiente creata nello step precedente
-                replacementString: Bearer ${{ env.API_TOKEN }}
+              rules:
+                - description: Iniezione Auth Token
+                  matchType: req_header_str
+                  matchString: Authorization
+                  replacementString: Bearer ${{ env.API_TOKEN }}
             - type: openapi
               parameters:
                 apiUrl: http://localhost:5050/openapi.json
