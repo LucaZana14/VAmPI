@@ -1,4 +1,5 @@
 connexion[flask]>=3.0.0
+connexion[uvicorn]>=3.0.0
 Flask>=2.3.0
 flask-sqlalchemy==3.0.3
 jsonschema==4.17.3
