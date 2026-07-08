@@ -1,0 +1,40 @@
+name: Dynamic Security Testing
+
+on:
+  workflow_call
+
+jobs:
+  zap-scan:
+    name: OWASP ZAP API Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 1. Accendiamo VAmPI all'interno del server GitHub
+      - name: Build e Avvio di VAmPI
+        run: |
+          docker compose up --build -d
+          # Diamo al server 15 secondi per avviarsi completamente prima di attaccarlo
+          sleep 15 
+
+      # 2. Scateniamo il mostro da 4GB (ci pensa GitHub)
+      - name: Esegui scansione OWASP ZAP
+        uses: zaproxy/action-api-scan@v0.9.0
+        with:
+          # Ricorda: usa la porta 5050 se hai mantenuto la modifica nel docker-compose per il Mac, 
+          # altrimenti rimetti 5000 se nel repository hai il file originale
+          target: 'http://localhost:5050/openapi.json'
+          format: 'openapi'
+          # All'inizio mettiamo false: ZAP troverà dei disastri, se mettessimo true 
+          # ci farebbe fallire (rosso) la pipeline ogni singola volta
+          fail_action: false 
+
+      # 3. Estraiamo il report dal server e lo rendiamo scaricabile
+      - name: Salva il Report HTML
+        uses: actions/upload-artifact@v4
+        if: always() # Salvalo anche se l'attacco va male
+        with:
+          name: zap-dast-report
+          path: report_html.html

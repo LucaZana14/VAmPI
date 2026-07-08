@@ -44,3 +44,8 @@ jobs:
         name: run trivy
         needs: [gitleaks , spectral]
         uses: ./.github/workflows/trivy.yml 
+    dast:
+        name: run ZAP DAST
+        # ZAP parte SOLO se questi tre controlli hanno dato luce verde
+        needs: [codeql, Trivy, sonarqube] 
+        uses: ./.github/workflows/dast.yml
