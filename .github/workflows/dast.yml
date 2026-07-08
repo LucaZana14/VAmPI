@@ -45,16 +45,15 @@ jobs:
                     reportFile: "results"
             EOF
 
-            # 3. Lanciamo ZAP direttamente tramite Docker.
-            - name: Esegui scansione OWASP ZAP (Automation Framework)
-            run: |
+        # 3. Lanciamo ZAP direttamente tramite Docker.
+      - name: Esegui scansione OWASP ZAP (Automation Framework)
+        run: |
             docker run --user root -v ${{ github.workspace }}:/zap/wrk/:rw -t zaproxy/zap-stable zap.sh -cmd -autorun /zap/wrk/vampi-zap.yaml
 
-            # 4. Carichiamo i risultati SARIF (che ora si chiama results.json)
-            - name: Upload dei risultati DAST su GitHub Security
-            uses: github/codeql-action/upload-sarif@v4
-            if: always() 
-            with:
-            # NOTA: Ora cerchiamo il file .json generato da ZAP!
+        # 4. Carichiamo i risultati SARIF (che ora si chiama results.json)
+      - name: Upload dei risultati DAST su GitHub Security
+        uses: github/codeql-action/upload-sarif@v4 
+        if: always() 
+        with:
             sarif_file: 'results.json'
             category: 'owasp-zap-dast'
