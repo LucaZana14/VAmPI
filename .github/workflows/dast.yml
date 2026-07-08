@@ -60,12 +60,34 @@ jobs:
           EOF
 
       # 4. Lanciamo ZAP direttamente tramite Docker.
-      # Aggiungiamo --network host per permettere a ZAP di vedere il "localhost" di GitHub Actions
       - name: Esegui scansione OWASP ZAP (Automation Framework)
         run: |
           docker run --user root --network host -v ${{ github.workspace }}:/zap/wrk/:rw -t zaproxy/zap-stable zap.sh -cmd -autorun /zap/wrk/vampi-zap.yaml
-      
-          # 5. Carichiamo i risultati SARIF sulla Dashboard
+
+      # 5. TRADUTTORE SARIF: Inganniamo GitHub sostituendo gli URL con un file reale
+      - name: Adatta il SARIF per GitHub Code Scanning
+        if: always()
+        run: |
+          python3 -c "
+          import json
+          try:
+              with open('results.json', 'r') as f:
+                  data = json.load(f)
+              for run in data.get('runs', []):
+                  for result in run.get('results', []):
+                      for location in result.get('locations', []):
+                          pl = location.get('physicalLocation', {})
+                          al = pl.get('artifactLocation', {})
+                          # Se trova un URL di runtime, lo mappa al file openapi.json
+                          if 'uri' in al and al['uri'].startswith('http'):
+                              al['uri'] = 'openapi.json'
+              with open('results.json', 'w') as f:
+                  json.dump(data, f)
+          except Exception as e:
+              print(f'Nessun file da processare o errore: {e}')
+          "
+
+      # 6. Carichiamo i risultati SARIF (ora perfettamente compatibili)
       - name: Upload dei risultati DAST su GitHub Security
         uses: github/codeql-action/upload-sarif@v4
         if: always()
