@@ -62,31 +62,13 @@ jobs:
         run: |
           docker run --user root --network host -v ${{ github.workspace }}:/zap/wrk/:rw -t zaproxy/zap-stable zap.sh -cmd -autorun /zap/wrk/vampi-zap.yaml
 
+       # 5. TRADUTTORE SARIF AVANZATO: Riprendiamo i permessi e bonifichiamo il JSON
       - name: Adatta il SARIF per GitHub Code Scanning
         if: always()
         run: |
-          sudo chown $USER:$USER results.json
-          python3 -c "
-          import json, sys
-          def clean_uris(obj):
-              if isinstance(obj, dict):
-                  for k, v in obj.items():
-                      if k == 'uri' and isinstance(v, str) and v.startswith('http'):
-                          obj[k] = 'openapi.json'
-                      else:
-                          clean_uris(v)
-              elif isinstance(obj, list):
-                  for item in obj:
-                      clean_uris(item)
-          try:
-              with open('results.json', 'r') as f:
-                  data = json.load(f)
-              clean_uris(data)
-              with open('results.json', 'w') as f:
-                  json.dump(data, f)
-          except Exception as e:
-              sys.exit(1) 
-          "
+         sudo chown -R $USER:$USER results.json
+         python3 .github/scripts/clean_zap_sarif.py
+
 
       - name: Upload dei risultati ZAP
         uses: github/codeql-action/upload-sarif@v4
