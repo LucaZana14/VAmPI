@@ -1,0 +1,158 @@
+name: DAST Bake-Off (ZAP vs Xygeni)
+
+on: [push, workflow_dispatch]
+
+jobs:
+  # ==========================================
+  # ROUND 1: Il Campione Open-Source (ZAP)
+  # ==========================================
+  zap-scan:
+    name: OWASP ZAP API Scan
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build e Avvio di VAmPI (Ambiente Isolato 1)
+        run: |
+          docker run -d -p 5050:5050 erev0s/vampi
+          sleep 15
+
+      - name: Setup DB e Auth Token
+        id: auth
+        run: |
+          curl -s http://localhost:5050/createdb > /dev/null
+          curl -s -X POST "http://localhost:5050/users/v1/register" -H "Content-Type: application/json" -d '{"username": "zap_user", "password": "zap_password", "email": "zap@test.com"}' > /dev/null
+          TOKEN=$(curl -s -X POST "http://localhost:5050/users/v1/login" -H "Content-Type: application/json" -d '{"username": "zap_user", "password": "zap_password"}' | jq -r .auth_token)
+          echo "API_TOKEN=$TOKEN" >> $GITHUB_ENV
+
+      - name: Creazione configurazione ZAP Automation
+        run: |
+          cat << 'EOF' > vampi-zap.yaml
+          env:
+            contexts:
+              - name: VAmPI-Context
+                urls:
+                  - http://localhost:5050
+          jobs:
+            - type: replacer
+              rules:
+                - description: Iniezione Auth Token
+                  matchType: req_header_str
+                  matchString: Authorization
+                  replacementString: Bearer ${{ env.API_TOKEN }}
+            - type: openapi
+              parameters:
+                apiUrl: http://localhost:5050/openapi.json
+            - type: passiveScan-config
+            - type: activeScan
+            - type: report
+              parameters:
+                template: sarif-json
+                reportDir: /zap/wrk
+                reportFile: results
+          EOF
+
+      - name: Esegui scansione OWASP ZAP
+        run: |
+          docker run --user root --network host -v ${{ github.workspace }}:/zap/wrk/:rw -t zaproxy/zap-stable zap.sh -cmd -autorun /zap/wrk/vampi-zap.yaml
+
+      - name: Adatta il SARIF per GitHub Code Scanning
+        if: always()
+        run: |
+          sudo chown $USER:$USER results.json
+          python3 -c "
+          import json, sys
+          def clean_uris(obj):
+              if isinstance(obj, dict):
+                  for k, v in obj.items():
+                      if k == 'uri' and isinstance(v, str) and v.startswith('http'):
+                          obj[k] = 'openapi.json'
+                      else:
+                          clean_uris(v)
+              elif isinstance(obj, list):
+                  for item in obj:
+                      clean_uris(item)
+          try:
+              with open('results.json', 'r') as f:
+                  data = json.load(f)
+              clean_uris(data)
+              with open('results.json', 'w') as f:
+                  json.dump(data, f)
+          except Exception as e:
+              sys.exit(1) 
+          "
+
+      - name: Upload dei risultati ZAP
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: results.json
+          category: owasp-zap-dast
+
+# ==========================================
+  # ROUND 2: Lo Sfidante Enterprise (Xygeni DAST)
+  # ==========================================
+  xygeni-scan:
+    name: Xygeni DAST Scan
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build e Avvio di VAmPI (Ambiente Isolato 2)
+        run: |
+          docker run -d -p 5050:5050 erev0s/vampi
+          sleep 15
+          
+      - name: Setup DB e Auth Token per Xygeni
+        run: |
+          curl -s http://localhost:5050/createdb > /dev/null
+          curl -s -X POST "http://localhost:5050/users/v1/register" -H "Content-Type: application/json" -d '{"username": "xy_user", "password": "xy_password", "email": "xy@test.com"}' > /dev/null
+          TOKEN=$(curl -s -X POST "http://localhost:5050/users/v1/login" -H "Content-Type: application/json" -d '{"username": "xy_user", "password": "xy_password"}' | jq -r .auth_token)
+          echo "XY_API_TOKEN=$TOKEN" >> $GITHUB_ENV
+
+      # 1. Creiamo il profilo YAML di Xygeni al volo, proprio come abbiamo fatto per ZAP
+      - name: Configurazione Profilo Xygeni DAST
+        run: |
+          mkdir -p profiles
+          cat << 'EOF' > profiles/vampi-profile.yml
+          name: vampi-profile
+          description: "Profilo Xygeni per l'API VAmPI"
+          extends: openapi
+          authentication:
+            method: BEARER
+            headerName: "Authorization"
+            headerValue: "${env:XY_API_TOKEN}"
+            headerPrefix: "Bearer "
+          EOF
+
+      # 2. Esecuzione nativa tramite CLI
+      - name: Esegui scansione Xygeni DAST
+        env:
+          # Xygeni leggerà il token da questa variabile ambientale in modo sicuro
+          XY_API_TOKEN: ${{ env.XY_API_TOKEN }}
+
+          XYGENI_TOKEN: ${{ secrets.XYGENI_TOKEN }}
+        run: |
+          # Scarica e installa la CLI di Xygeni (se non usi già un loro container proprietario)
+          curl -sL https://xygeni.io/install.sh | bash
+          
+          # Esegue la scansione usando il tech base 'openapi' e forzando l'intensità a 'deep' per trovare CVE
+          xy-dast scan -u http://localhost:5050 --profile vampi-profile --intensity deep -o xygeni-results.sarif
+
+      - name: Upload dei risultati Xygeni
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: xygeni-results.sarif
+          category: xygeni-dast
