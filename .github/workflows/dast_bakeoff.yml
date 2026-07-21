@@ -121,35 +121,34 @@ jobs:
           TOKEN=$(curl -s -X POST "http://localhost:5050/users/v1/login" -H "Content-Type: application/json" -d '{"username": "xy_user", "password": "xy_password"}' | jq -r .auth_token)
           echo "XY_API_TOKEN=$TOKEN" >> $GITHUB_ENV
 
-      # 1. Creiamo il profilo YAML di Xygeni al volo, proprio come abbiamo fatto per ZAP
-      - name: Configurazione Profilo Xygeni DAST
+      # 1. INSTALLAZIONE UFFICIALE XYGENI (Dal container Docker come da manuale)
+      - name: Installa Xygeni DAST Wrapper
         run: |
-          mkdir -p profiles
-          cat << 'EOF' > profiles/vampi-profile.yml
-          name: vampi-profile
-          description: "Profilo Xygeni per l'API VAmPI"
-          extends: openapi
-          authentication:
-            method: BEARER
-            headerName: "Authorization"
-            headerValue: "${env:XY_API_TOKEN}"
-            headerPrefix: "Bearer "
-          EOF
+          # Crea la cartella locale e la aggiunge al PATH di GitHub Actions
+          mkdir -p ~/.local/bin
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          
+          # Estrae l'eseguibile dall'immagine Docker ufficiale
+          docker run --rm -v ~/.local/bin:/mnt/install xygeni/xy-dast install
 
-      # 2. Esecuzione nativa tramite CLI
+      # 2. ESECUZIONE DELLA SCANSIONE (Con i flag ufficiali)
       - name: Esegui scansione Xygeni DAST
         env:
-          # Xygeni leggerà il token da questa variabile ambientale in modo sicuro
+          # Variabile letta da --bearer-token
           XY_API_TOKEN: ${{ env.XY_API_TOKEN }}
-
+          # Token di licenza (Da aggiungere ai Secrets di GitHub come spiegato prima)
           XYGENI_TOKEN: ${{ secrets.XYGENI_TOKEN }}
         run: |
-          # Scarica e installa la CLI di Xygeni (se non usi già un loro container proprietario)
-          curl -sL https://xygeni.io/install.sh | bash
-          
-          # Esegue la scansione usando il tech base 'openapi' e forzando l'intensità a 'deep' per trovare CVE
-          xy-dast scan -u http://localhost:5050 --profile vampi-profile --intensity deep -o xygeni-results.sarif
+          xy-dast scan -u http://localhost:5050 \
+            -p openapi \
+            --openapi http://localhost:5050/openapi.json \
+            --bearer-token env:XY_API_TOKEN \
+            --intensity deep \
+            --format sarif \
+            --no-upload \
+            -o xygeni-results.sarif
 
+      # 3. UPLOAD RISULTATI (Nessuno script Python richiesto!)
       - name: Upload dei risultati Xygeni
         uses: github/codeql-action/upload-sarif@v4
         if: always()
