@@ -30,6 +30,11 @@ jobs:
         needs: [gitleaks , spectral]
         uses: ./.github/workflows/codeql.yml 
 
+    bandit:
+        name: run Bandit
+        needs: [gitleaks , spectral]
+        uses: ./.github/workflows/bandit.yml
+
     sonarqube:
         name: run sonarqube
         needs: [gitleaks , spectral]
