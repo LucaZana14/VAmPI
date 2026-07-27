@@ -30,6 +30,12 @@ jobs:
         needs: [gitleaks , spectral]
         uses: ./.github/workflows/codeql.yml 
 
+    semgrep:
+        name: run Semgrep
+        needs: [gitleaks , spectral]
+        uses: ./.github/workflows/semgrep.yml 
+        secrets: inherit
+
     bandit:
         name: run Bandit
         needs: [gitleaks , spectral]

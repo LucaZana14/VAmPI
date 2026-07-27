@@ -1,0 +1,77 @@
+name: Semgrep SAST
+
+on:
+  workflow_call:
+    inputs:
+      scan_path:
+        description: "Path da analizzare, relativo alla root del repo"
+        required: false
+        type: string
+        default: "."
+      configs:
+        description: >
+          Rulesets espliciti separati da virgola (es. "p/python,p/php,p/owasp-top-ten,p/security-audit").
+          Se lasciato vuoto, usa 'semgrep ci' che scarica la policy configurata
+          su Semgrep AppSec Platform (dashboard) invece che rulesets scritti qui —
+          utile se preferisci gestire cosa scansionare dal sito invece che nello YAML.
+        required: false
+        type: string
+        default: ""
+      sarif_category:
+        description: "Categoria SARIF per distinguere più run sulla stessa repo"
+        required: false
+        type: string
+        default: "semgrep"
+    secrets:
+      SEMGREP_APP_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  semgrep:
+    name: Semgrep Scan
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    # evita di far girare lo scan sulle PR aperte automaticamente da dependabot
+    # (problemi noti di permessi sul token in quel contesto)
+    if: github.actor != 'dependabot[bot]'
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Esegui Semgrep (policy cloud)
+        if: ${{ inputs.configs == '' }}
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+        run: semgrep ci --sarif --output=results.sarif || true
+
+      - name: Esegui Semgrep (rulesets espliciti)
+        if: ${{ inputs.configs != '' }}
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+        run: |
+          CONFIG_ARGS=""
+          IFS=',' read -ra RULESETS <<< "${{ inputs.configs }}"
+          for r in "${RULESETS[@]}"; do
+            CONFIG_ARGS="$CONFIG_ARGS --config $r"
+          done
+          semgrep scan "${{ inputs.scan_path }}" \
+            $CONFIG_ARGS \
+            --sarif \
+            --output=results.sarif \
+            || true
+
+      - name: Upload dei risultati SARIF
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: results.sarif
+          category: ${{ inputs.sarif_category }}
